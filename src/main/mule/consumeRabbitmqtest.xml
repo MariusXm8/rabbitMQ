@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+	<flow name="consumeRabbit1" doc:id="d4aad78e-298a-4da3-a784-3f4bb48927c2" >
+		<http:listener doc:name="/consume" doc:id="599043f4-68d2-4438-9783-b5357ac0bd00" config-ref="HTTP_Listener_config" path="/consume"/>
+		<logger level="INFO" doc:name="Logger" doc:id="4858fc95-95ef-4178-ae4d-f647910b5ee8" />
+	</flow>
+	<flow name="MainFlow" initialState="stopped" doc:id="6950c30a-ce09-40ae-b604-45d8a82d31b4">
+		<amqp:listener doc:name="Listener" config-ref="AMQP_Config" queueName="Coda" ackMode="MANUAL">
+        </amqp:listener>
+		<set-variable value="#[attributes.ackId]" doc:name="var ar for ackID" doc:id="732f8829-a3d8-4a25-a35e-af86229f51a5" variableName="ar"/>
+		<set-variable variableName="attempts" value="#[%dw 2.0&#10;output application/json&#10;---&#10;(attributes.headers.count as Number) default 0]" doc:name="attempts"/>
+            
+            <choice doc:name="genera un errore solo per payload specifico">
+                <!-- Simulate a condition where the message processing fails -->
+                <when expression='#[payload == "13"]'>
+                    <!-- Increment the attempts counter -->
+                    
+                    <!-- If attempts reach 3, move the message to DLQ -->
+				<raise-error type="APP:PROCESSING_ERROR" />
+                
+</when>
+                <otherwise>
+                    <!-- Simulate successful processing -->
+                    <!-- Acknowledge the message -->
+				<logger level="INFO" message="Successful processing" />
+				<amqp:ack doc:name="Ack" doc:id="1ffaabca-1e6d-49b7-af3e-dfb46d2ed380" ackId="#[attributes.ackId]"/>
+                
+</otherwise>
+            </choice>
+		<error-handler>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2c8b4491-62d5-4114-9984-e8257c407a4f" >
+				<set-variable variableName="attempts" value="#[%dw 2.0&#10;output application/json&#10;---&#10;vars.attempts as Number + 1]" doc:name="incrementa" />
+				<choice doc:name="se ho consumato il messagio più di 3 volte viene mandato il messaggio nel DLQ">
+                        <when expression="#[vars.attempts &lt; 3]">
+                            <!-- Reject the message and move to DLQ -->
+						<amqp:publish doc:name="riprova" doc:id="6e9fca92-d73c-46a8-8271-b21325f5548b" config-ref="AMQP_Config">
+					<amqp:routing-keys >
+								<amqp:routing-key value="Coda" />
+							</amqp:routing-keys>
+							<amqp:message>
+						<amqp:headers><![CDATA[#[output application/java
+---
+{
+"count": vars.attempts as Number
+
+}]]]></amqp:headers>
+					</amqp:message>
+				</amqp:publish>
+						<logger level="INFO" message="Simulating processing failure. Attempts: #[vars.attempts]" />
+                        
+</when>
+                        <otherwise>
+                            <!-- Simulate failure (can be replaced with actual processing logic) -->
+						<amqp:publish doc:name="Send it to DLQ" doc:id="83fe8fea-fab8-4e2b-9ca1-16209d964780" config-ref="AMQP_Config">
+							<amqp:routing-keys >
+								<amqp:routing-key value="Coda.DLQ" />
+							</amqp:routing-keys>
+						</amqp:publish>
+						<logger level="INFO" doc:name="Logger" doc:id="f913474d-4b3d-4d70-ac3d-7e9bc63fc9dd" message="messaggio mandato nel DLQ" />
+                        
+</otherwise>
+                    </choice>
+				<amqp:ack doc:name="Ack" doc:id="750ed55d-ea7b-47ba-9de9-968ab6fdb4c9" ackId="#[vars.ar as String]" />
+			</on-error-continue>
+		</error-handler>
+    
+</flow>
+	
+</mule>

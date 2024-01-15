@@ -1,0 +1,5 @@
+AMQP:
+  localhost: "localhost"
+  port: "5673"
+  username: "USERNAME"
+  password: "PASSWORD"

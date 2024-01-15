@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<amqp:config name="AMQP_Config" doc:name="AMQP Config" doc:id="4add3203-e078-45c7-909b-8b72ea659a77" >
+		<amqp:connection port="${AMQP.port}" username="${AMQP.username}" password="${AMQP.password}" host="${AMQP.localhost}"/>
+	</amqp:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="82878b7f-e151-4a9e-91d6-e76fed333a54" file="Config.yaml" />
+	<os:config name="ObjectStore_Config" doc:name="ObjectStore Config" doc:id="f53cc134-e08c-4088-9919-9118358923e0" />
+	<os:object-store name="errorCounter" doc:name="Object store" doc:id="5979f7cc-4b53-4b23-96d5-73d6e112c54c" config-ref="ObjectStore_Config" />
+</mule>

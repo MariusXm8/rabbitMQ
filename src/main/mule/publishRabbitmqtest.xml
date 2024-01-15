@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="80e15107-4d55-45a4-a807-35fa2e1090ab">
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="publishFlow" doc:id="b53280d4-923c-4f10-b62b-9d53c7f3f167" >
+		<http:listener doc:name="/pubblica" doc:id="45997547-8513-4808-b6bd-97a5a48bca59" config-ref="HTTP_Listener_config" path="/pubblica"/>
+		<set-variable value="#[attributes.queryParams.testo]" doc:name="salvo il queryparams testo " doc:id="7d7eb51a-5657-4293-8c54-b4850ed9a782" variableName="generaE"/>
+		<choice doc:name="Choice" doc:id="86f09a2c-ea7a-403c-97d3-5631720dd18f" >
+			<when expression="#[vars.generaE == 12]">
+				<raise-error doc:name="genera errore CUSTOM:CIAO" doc:id="4fb91753-aac5-47fb-ab22-2c5e89d29804" type="CUSTOM:CIAO" description="errore generato" />
+			</when>
+			<otherwise >
+				<set-payload value="#[attributes.queryParams.testo]" doc:name="queryParams.testo" doc:id="cffbc453-3013-4207-8367-c603c4c76d7c" />
+				<ee:transform doc:name="application/json" doc:id="8b7dee6a-c3e5-47a5-a75d-d0ccfd4b6e9b">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+				<amqp:publish doc:name="Publish" doc:id="80e15107-4d55-45a4-a807-35fa2e1090ab" config-ref="AMQP_Config" deliveryMode="PERSISTENT" sendCorrelationId="ALWAYS">
+				<amqp:routing-keys>
+				<amqp:routing-key value="Coda" />
+				</amqp:routing-keys>
+			<amqp:message>
+				<amqp:properties />
+				<amqp:headers><![CDATA[#[output application/json
+---
+{
+	count: attributes.header.count default 0
+}]]]></amqp:headers>
+			</amqp:message>
+			</amqp:publish>
+				<logger level="INFO" doc:name="Messagio Pubblicato" doc:id="6d8ef4e3-9cbb-40ab-9026-15d4cca521d6" message='#["Messagio Pubblicato : " ++ payload]' />
+				<os:remove doc:name="errorCount" doc:id="dc989859-3788-46e0-b728-f4f24d11e2f8" key="errorCount" objectStore="errorCounter"/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2a85498f-d32c-4195-bc96-7606a84fa43f" type="CUSTOM:CIAO">
+				<os:retrieve doc:name="errorCount" doc:id="7a828d63-5549-45d3-9141-6c6ba06712e3" key="errorCount" objectStore="errorCounter">
+					<os:default-value ><![CDATA[#[1 as Number]]]></os:default-value>
+				</os:retrieve>
+				<set-variable value="#[payload]" doc:name="contatore" doc:id="be24c966-3aae-4977-9bde-f523eec2c70b" variableName="contatore"/>
+				<choice doc:name="Choice" doc:id="2a3be714-0e1a-4f75-a276-20996def1f74">
+					<when expression="#[vars.contatore &gt;= 3]">
+						<amqp:publish doc:name="Send it to DLQ" doc:id="a97e4673-8b87-44b3-8d51-a068f71bcea1" config-ref="AMQP_Config" >
+							<amqp:routing-keys >
+								<amqp:routing-key value="Coda.DLQ" />
+							</amqp:routing-keys>
+							<amqp:message >
+								<amqp:body ><![CDATA[#[error.description]]]></amqp:body>
+							</amqp:message>
+						</amqp:publish>
+						<os:remove doc:name="errorCount" doc:id="107da786-9689-4f53-bfbf-4f783d096f53" key="errorCount" objectStore="errorCounter"/>
+						<logger level="INFO" doc:name="tentativi esauriti" doc:id="209e2df7-fb4e-4351-ba74-6490da91d4aa" message="tentativi esauriti"/>
+					</when>
+					<otherwise >
+						<os:store doc:name="errorCount +1" doc:id="6a1ec067-2657-43df-a0fe-9144e33a726a" key="errorCount">
+					<os:value><![CDATA[#[output application/json
+---
+vars.contatore + 1]]]></os:value>
+				</os:store>
+						<logger level="INFO" doc:name="tentativo fallito" doc:id="9f49e8be-b56b-4693-86cd-bc2dc8a83551" message="#[error.description]" />
+					</otherwise>
+				</choice>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9b3df445-c8fa-4ab7-94f5-d32c2c582376" >
+				<logger level="INFO" doc:name="riprova" doc:id="7d3c382f-84db-4249-b3e6-7ae2a616da80" message="#[error.description]" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>
